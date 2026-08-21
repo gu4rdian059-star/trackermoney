@@ -1,19 +1,21 @@
 {
   "expo": {
-    "name": "expoproject",
-    "slug": "expoproject",
+    "name": "CatatKas",
+    "slug": "catatkas",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "expoproject",
+    "scheme": "catatkas",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.catatkas.keuangan"
     },
     "android": {
+      "package": "com.catatkas.keuangan",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#059669",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -23,10 +25,22 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "CatatKas - Catatan Keuangan",
+      "shortName": "CatatKas",
+      "themeColor": "#059669",
+      "backgroundColor": "#F8FAFC",
+      "display": "standalone"
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-foreground.png",
+          "color": "#059669"
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -38,7 +52,9 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
