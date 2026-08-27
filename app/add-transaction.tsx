@@ -10,10 +10,13 @@ import {
   Platform,
   Alert,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import {
   Palette,
   Spacing,
@@ -25,7 +28,15 @@ import {
 } from '../constants/theme';
 import { financeStorage } from '../services/financeStorage';
 import { notificationService } from '../services/notificationService';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, Category, TransactionType } from '../types/finance';
+import {
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  Category,
+  TransactionType,
+  WALLET_OPTIONS,
+  DEFAULT_WALLET,
+  WalletOption,
+} from '../types/finance';
 
 export default function AddTransactionScreen() {
   const router = useRouter();
@@ -39,6 +50,13 @@ export default function AddTransactionScreen() {
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
 
+  // Wallet & Funding Source State
+  const [selectedWallet, setSelectedWallet] = useState<WalletOption>(DEFAULT_WALLET);
+
+  // Receipt / Proof of Transfer Photo State
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [showPhotoOptionsModal, setShowPhotoOptionsModal] = useState(false);
+
   // Real-Time & Date State
   const [nowDate, setNowDate] = useState(() => new Date());
   const [useRealTime, setUseRealTime] = useState(true);
@@ -46,7 +64,7 @@ export default function AddTransactionScreen() {
   const [customTime, setCustomTime] = useState(() => getLocalTimeString());
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  // Live ticking clock for real-time accuracy
+  // Live ticking clock
   useEffect(() => {
     const timer = setInterval(() => {
       setNowDate(new Date());
@@ -58,9 +76,7 @@ export default function AddTransactionScreen() {
     return type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   }, [type]);
 
-  const [selectedCategory, setSelectedCategory] = useState<Category>(() =>
-    initialType === 'income' ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]
-  );
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
   const handleTypeChange = (newType: TransactionType) => {
     if (newType !== type) {
@@ -68,8 +84,7 @@ export default function AddTransactionScreen() {
         Haptics.selectionAsync();
       }
       setType(newType);
-      const newCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-      setSelectedCategory(newCategories[0]);
+      setSelectedCategory(null);
     }
   };
 
@@ -198,6 +213,106 @@ export default function AddTransactionScreen() {
     setCustomTime(`${newH}:${newM}`);
   };
 
+  // Image Picker Actions
+  const handlePickCamera = async () => {
+    setShowPhotoOptionsModal(false);
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Izin Kamera Dibutuhkan',
+          'Harap berikan izin akses kamera pada pengaturan perangkat Anda.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setReceiptUri(result.assets[0].uri);
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch {
+      Alert.alert('Gagal', 'Terjadi kesalahan saat mengakses kamera.');
+    }
+  };
+
+  const handlePickGallery = async () => {
+    setShowPhotoOptionsModal(false);
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Izin Galeri Dibutuhkan',
+          'Harap berikan izin akses galeri foto pada pengaturan perangkat Anda.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setReceiptUri(result.assets[0].uri);
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch {
+      Alert.alert('Gagal', 'Terjadi kesalahan saat membuka galeri foto.');
+    }
+  };
+
+  const handleFlipReceipt = async () => {
+    if (!receiptUri) return;
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      const manipResult = await ImageManipulator.manipulateAsync(
+        receiptUri,
+        [{ flip: ImageManipulator.FlipType.Horizontal }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setReceiptUri(manipResult.uri);
+    } catch {
+      Alert.alert('Gagal', 'Terjadi kesalahan saat membalik foto.');
+    }
+  };
+
+  const handleRotateReceipt = async () => {
+    if (!receiptUri) return;
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      const manipResult = await ImageManipulator.manipulateAsync(
+        receiptUri,
+        [{ rotate: 90 }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setReceiptUri(manipResult.uri);
+    } catch {
+      Alert.alert('Gagal', 'Terjadi kesalahan saat memutar foto.');
+    }
+  };
+
+  const handleRemoveReceipt = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.selectionAsync();
+    }
+    setReceiptUri(null);
+  };
+
   const getComputedAmount = (): number => {
     if (!amountStr) return 0;
     try {
@@ -227,6 +342,11 @@ export default function AddTransactionScreen() {
       return;
     }
 
+    if (!selectedCategory) {
+      Alert.alert('Perhatian', 'Harap pilih kategori transaksi.');
+      return;
+    }
+
     const finalDate = selectedDate || getLocalDateString();
     const finalTime = useRealTime ? getLocalTimeString(nowDate) : customTime;
 
@@ -239,13 +359,16 @@ export default function AddTransactionScreen() {
         categoryName: selectedCategory.name,
         categoryIcon: selectedCategory.icon,
         categoryColor: selectedCategory.color,
+        walletId: selectedWallet.id,
+        walletName: selectedWallet.name,
+        walletType: selectedWallet.type,
+        receiptUri: receiptUri || undefined,
         date: finalDate,
         time: finalTime,
         note: note.trim() || undefined,
       });
 
-      // Send local notification alert
-      await notificationService.sendTransactionNotification(savedTx);
+      notificationService.sendTransactionNotification(savedTx).catch(() => {});
 
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -253,26 +376,20 @@ export default function AddTransactionScreen() {
 
       router.back();
     } catch {
-      Alert.alert('Kesalahan', 'Gagal menyimpan transaksi. Silakan coba lagi.');
+      Alert.alert('Error', 'Gagal menyimpan transaksi. Coba lagi.');
     }
   };
 
   const computedAmount = getComputedAmount();
-  const isFormValid = computedAmount > 0 && title.trim().length > 0;
+  const isFormValid = computedAmount > 0 && title.trim().length > 0 && selectedCategory !== null;
 
-  // Formatted strings for real-time display
-  const liveHours = String(nowDate.getHours()).padStart(2, '0');
-  const liveMinutes = String(nowDate.getMinutes()).padStart(2, '0');
-  const liveSeconds = String(nowDate.getSeconds()).padStart(2, '0');
-  const liveTimeString = `${liveHours}:${liveMinutes}:${liveSeconds} WIB`;
+  const todayStr = getLocalDateString();
+  const isTodaySelected = selectedDate === todayStr;
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterdaySelected = selectedDate === getLocalDateString(yesterday);
 
-  const isTodaySelected = selectedDate === getLocalDateString();
-  const yesterdayStr = (() => {
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    return getLocalDateString(y);
-  })();
-  const isYesterdaySelected = selectedDate === yesterdayStr;
+  const displayTime = useRealTime ? getLocalTimeString(nowDate) : customTime;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -287,39 +404,37 @@ export default function AddTransactionScreen() {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <Ionicons name="close" size={20} color={Palette.textSecondary} />
+            <Ionicons name="close" size={20} color={Palette.textPrimary} />
           </TouchableOpacity>
-
           <Text style={styles.headerTitle}>Catat Transaksi</Text>
-
           <View style={styles.headerPlaceholder} />
         </View>
 
         <ScrollView
-          style={styles.container}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Switcher Tipe Transaksi */}
-          <View style={styles.typeSegment}>
+          {/* 1. Type Switcher Segment (Pengeluaran vs Pemasukan) */}
+          <View style={styles.typeSegmentCard}>
             <TouchableOpacity
               style={[
-                styles.typeBtn,
-                type === 'expense' && styles.typeBtnActiveExpense,
+                styles.typeSegmentBtn,
+                type === 'expense' && styles.typeSegmentBtnActiveExpense,
               ]}
               onPress={() => handleTypeChange('expense')}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="arrow-up-circle-outline"
-                size={16}
+                size={18}
                 color={type === 'expense' ? Palette.rose : Palette.textTertiary}
               />
               <Text
                 style={[
-                  styles.typeBtnText,
-                  type === 'expense' && styles.typeBtnTextActiveExpense,
+                  styles.typeSegmentText,
+                  type === 'expense' && styles.typeSegmentTextActiveExpense,
                 ]}
               >
                 Pengeluaran
@@ -328,21 +443,21 @@ export default function AddTransactionScreen() {
 
             <TouchableOpacity
               style={[
-                styles.typeBtn,
-                type === 'income' && styles.typeBtnActiveIncome,
+                styles.typeSegmentBtn,
+                type === 'income' && styles.typeSegmentBtnActiveIncome,
               ]}
               onPress={() => handleTypeChange('income')}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="arrow-down-circle-outline"
-                size={16}
+                size={18}
                 color={type === 'income' ? Palette.emerald : Palette.textTertiary}
               />
               <Text
                 style={[
-                  styles.typeBtnText,
-                  type === 'income' && styles.typeBtnTextActiveIncome,
+                  styles.typeSegmentText,
+                  type === 'income' && styles.typeSegmentTextActiveIncome,
                 ]}
               >
                 Pemasukan
@@ -350,181 +465,151 @@ export default function AddTransactionScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Widget Waktu Real-Time & Tanggal Otomatis */}
-          <View style={styles.realtimeCard}>
-            <View style={styles.realtimeHeader}>
-              <View style={styles.realtimeTitleRow}>
-                <View
-                  style={[
-                    styles.pulsingDot,
-                    { backgroundColor: useRealTime ? Palette.emerald : Palette.textTertiary },
-                  ]}
-                />
-                <Text style={styles.realtimeTitle}>
-                  {useRealTime ? 'Waktu Transaksi Real-Time' : 'Waktu Transaksi Kustom'}
-                </Text>
+          {/* 2. Kartu Waktu Transaksi Real-Time */}
+          <View style={styles.cardContainer}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderLeft}>
+                <View style={styles.greenLiveDot} />
+                <Text style={styles.cardHeaderTitle}>WAKTU TRANSAKSI REAL-TIME</Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.modeToggleBtn, !useRealTime && styles.modeToggleBtnActive]}
+                style={styles.cardHeaderActionBtn}
                 onPress={() => {
-                  if (Platform.OS !== 'web') {
-                    Haptics.selectionAsync();
-                  }
                   setUseRealTime(!useRealTime);
+                  setShowTimePicker(!useRealTime);
                 }}
                 activeOpacity={0.7}
               >
-                <Ionicons
-                  name={useRealTime ? 'time-outline' : 'checkmark-circle-outline'}
-                  size={13}
-                  color={!useRealTime ? Palette.indigo : Palette.textTertiary}
-                />
-                <Text style={[styles.modeToggleText, !useRealTime && styles.modeToggleTextActive]}>
+                <Ionicons name="time-outline" size={13} color={Palette.textSecondary} />
+                <Text style={styles.cardHeaderActionText}>
                   {useRealTime ? 'Ubah Waktu' : 'Pakai Real-Time'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Display Waktu & Tanggal Aktif */}
-            <View style={styles.timeDisplayRow}>
-              <View style={styles.timeMainCol}>
-                <Text style={styles.timeValueText}>
-                  {useRealTime ? liveTimeString : `${customTime} WIB`}
-                </Text>
-                <Text style={styles.dateValueText}>
-                  {formatDateID(selectedDate)}
-                </Text>
+            <View style={styles.timeInfoBox}>
+              <View style={styles.timeInfoLeft}>
+                <Text style={styles.clockLargeText}>{displayTime} WIB</Text>
+                <Text style={styles.dateSubText}>{formatDateID(selectedDate)}</Text>
               </View>
-
-              <View style={styles.timeBadgeWrap}>
-                <Ionicons
-                  name="calendar"
-                  size={16}
-                  color={Palette.emerald}
-                />
-                <Text style={styles.timeBadgeText}>
+              <View style={styles.dateBadgeWrap}>
+                <Ionicons name="calendar" size={13} color={Palette.emerald} />
+                <Text style={styles.dateBadgeText}>
                   {isTodaySelected ? 'Hari Ini' : isYesterdaySelected ? 'Kemarin' : 'Kustom'}
                 </Text>
               </View>
             </View>
 
-            {/* Kontrol Selector Tanggal & Jam jika ingin disesuaikan */}
-            <View style={styles.dateSelectorRow}>
+            {/* Quick Date Buttons */}
+            <View style={styles.dateButtonsRow}>
               <TouchableOpacity
-                style={[styles.dateChip, isTodaySelected && styles.dateChipActive]}
+                style={[styles.dateQuickBtn, isTodaySelected && styles.dateQuickBtnActive]}
                 onPress={() => setQuickDate('today')}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.dateChipText, isTodaySelected && styles.dateChipTextActive]}>
+                <Text
+                  style={[
+                    styles.dateQuickBtnText,
+                    isTodaySelected && styles.dateQuickBtnTextActive,
+                  ]}
+                >
                   Hari Ini
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.dateChip, isYesterdaySelected && styles.dateChipActive]}
+                style={[styles.dateQuickBtn, isYesterdaySelected && styles.dateQuickBtnActive]}
                 onPress={() => setQuickDate('yesterday')}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.dateChipText, isYesterdaySelected && styles.dateChipTextActive]}>
+                <Text
+                  style={[
+                    styles.dateQuickBtnText,
+                    isYesterdaySelected && styles.dateQuickBtnTextActive,
+                  ]}
+                >
                   Kemarin
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
-                  styles.dateChip,
-                  !isTodaySelected && !isYesterdaySelected && styles.dateChipActive,
+                  styles.dateQuickBtn,
+                  !isTodaySelected && !isYesterdaySelected && styles.dateQuickBtnActive,
                 ]}
                 onPress={() => setQuickDate('two_days_ago')}
                 activeOpacity={0.7}
               >
                 <Text
                   style={[
-                    styles.dateChipText,
-                    !isTodaySelected && !isYesterdaySelected && styles.dateChipTextActive,
+                    styles.dateQuickBtnText,
+                    !isTodaySelected && !isYesterdaySelected && styles.dateQuickBtnTextActive,
                   ]}
                 >
                   2 Hari Lalu
                 </Text>
               </TouchableOpacity>
-
-              {!useRealTime && (
-                <TouchableOpacity
-                  style={[styles.dateChip, styles.adjustTimeChip]}
-                  onPress={() => setShowTimePicker(!showTimePicker)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="time" size={13} color={Palette.indigo} />
-                  <Text style={[styles.dateChipText, { color: Palette.indigo, fontWeight: '700' }]}>
-                    Set Jam
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
 
-            {/* Panel Pengaturan Jam Manual jika diaktifkan */}
-            {!useRealTime && showTimePicker && (
-              <View style={styles.customTimePanel}>
-                <Text style={styles.customTimePanelLabel}>SESUAIKAN JAM TRANSAKSI:</Text>
-                <View style={styles.timeAdjustRow}>
+            {/* Manual Time Adjuster (if enabled) */}
+            {!useRealTime && (
+              <View style={styles.timeAdjustWrap}>
+                <Text style={styles.timeAdjustTitle}>SESUAIKAN JAM TRANSAKSI:</Text>
+                <View style={styles.timeAdjustGrid}>
                   <TouchableOpacity
-                    style={styles.timeAdjustBtn}
+                    style={styles.timeAdjustGridBtn}
                     onPress={() => adjustCustomMinutes(-60)}
-                    activeOpacity={0.7}
                   >
-                    <Text style={styles.timeAdjustBtnText}>-1 Jam</Text>
+                    <Text style={styles.timeAdjustGridBtnText}>-1 Jam</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.timeAdjustBtn}
+                    style={styles.timeAdjustGridBtn}
                     onPress={() => adjustCustomMinutes(-15)}
-                    activeOpacity={0.7}
                   >
-                    <Text style={styles.timeAdjustBtnText}>-15 Mnt</Text>
+                    <Text style={styles.timeAdjustGridBtnText}>-15 Mnt</Text>
                   </TouchableOpacity>
-                  <View style={styles.timeCurrentBox}>
-                    <Text style={styles.timeCurrentText}>{customTime}</Text>
+                  <View style={styles.timeAdjustCenterBox}>
+                    <Text style={styles.timeAdjustCenterText}>{customTime}</Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.timeAdjustBtn}
+                    style={styles.timeAdjustGridBtn}
                     onPress={() => adjustCustomMinutes(15)}
-                    activeOpacity={0.7}
                   >
-                    <Text style={styles.timeAdjustBtnText}>+15 Mnt</Text>
+                    <Text style={styles.timeAdjustGridBtnText}>+15 Mnt</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.timeAdjustBtn}
+                    style={styles.timeAdjustGridBtn}
                     onPress={() => adjustCustomMinutes(60)}
-                    activeOpacity={0.7}
                   >
-                    <Text style={styles.timeAdjustBtnText}>+1 Jam</Text>
+                    <Text style={styles.timeAdjustGridBtnText}>+1 Jam</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
           </View>
 
-          {/* Kartu Input Nominal dengan Kalkulator Otomatis */}
-          <View style={styles.amountCard}>
-            <View style={styles.amountHeaderRow}>
-              <Text style={styles.amountLabel}>
-                Nominal ({type === 'expense' ? 'Pengeluaran' : 'Pemasukan'})
+          {/* 3. Kartu Input Nominal */}
+          <View style={styles.cardContainer}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardHeaderTitle}>
+                NOMINAL ({type === 'expense' ? 'PENGELUARAN' : 'PEMASUKAN'})
               </Text>
 
               <TouchableOpacity
-                style={[styles.calcToggleBtn, showCalcPad && styles.calcToggleBtnActive]}
+                style={[styles.calcTogglePill, showCalcPad && styles.calcTogglePillActive]}
                 onPress={() => setShowCalcPad(!showCalcPad)}
                 activeOpacity={0.7}
               >
                 <Ionicons
                   name="calculator-outline"
-                  size={14}
-                  color={showCalcPad ? Palette.emerald : Palette.textTertiary}
+                  size={13}
+                  color={showCalcPad ? Palette.emerald : Palette.textSecondary}
                 />
                 <Text
                   style={[
-                    styles.calcToggleText,
-                    showCalcPad && styles.calcToggleTextActive,
+                    styles.calcTogglePillText,
+                    showCalcPad && styles.calcTogglePillTextActive,
                   ]}
                 >
                   {showCalcPad ? 'Tutup Kalkulator' : 'Hitung Otomatis'}
@@ -532,127 +617,106 @@ export default function AddTransactionScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.amountInputRow}>
-              <Text style={styles.currencyPrefix}>Rp</Text>
+            {/* Input Nominal Display */}
+            <View style={styles.amountInputDisplayRow}>
+              <Text
+                style={[
+                  styles.currencyRpLabel,
+                  type === 'income' ? styles.currencyIncome : styles.currencyExpense,
+                ]}
+              >
+                Rp
+              </Text>
               <TextInput
                 style={[
-                  styles.amountInput,
-                  type === 'income' ? styles.amountInputIncome : styles.amountInputExpense,
+                  styles.amountValueInput,
+                  type === 'income' ? styles.amountValueIncome : styles.amountValueExpense,
                 ]}
                 placeholder="0"
                 placeholderTextColor={Palette.textMuted}
                 keyboardType="numeric"
                 value={amountStr}
                 onChangeText={handleAmountChange}
-                autoFocus={true}
+                autoFocus={false}
                 underlineColorAndroid="transparent"
               />
               {amountStr.length > 0 && (
-                <TouchableOpacity onPress={handleClear} style={styles.clearInputBtn}>
+                <TouchableOpacity onPress={handleClear} style={styles.amountClearBtn}>
                   <Ionicons name="close-circle" size={20} color={Palette.textTertiary} />
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Hasil Perhitungan Live */}
+            {/* Kalkulator Live Result */}
             {calcExpression ? (
-              <View style={styles.liveCalcRow}>
-                <Ionicons name="calculator" size={14} color={Palette.emerald} />
-                <Text style={styles.liveCalcText}>Hasil Otomatis: {calcExpression}</Text>
-                <TouchableOpacity onPress={evaluateCalculator} style={styles.applyCalcBtn}>
-                  <Text style={styles.applyCalcBtnText}>Gunakan</Text>
+              <View style={styles.liveCalcResultWrap}>
+                <Ionicons name="calculator" size={13} color={Palette.emerald} />
+                <Text style={styles.liveCalcResultText}>Hasil Otomatis: {calcExpression}</Text>
+                <TouchableOpacity onPress={evaluateCalculator} style={styles.liveCalcUseBtn}>
+                  <Text style={styles.liveCalcUseBtnText}>Gunakan</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
 
-            {/* Tombol Mini Kalkulator (Operator Matematika) */}
+            {/* Mini Calculator Pad */}
             {showCalcPad && (
-              <View style={styles.calcPadGrid}>
+              <View style={styles.calcOperatorsRow}>
+                {['+', '−', '×', '÷'].map((op, idx) => {
+                  const actualOp = op === '−' ? '-' : op === '×' ? '*' : op === '÷' ? '/' : '+';
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.calcOperatorBtn}
+                      onPress={() => appendOperator(actualOp)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.calcOperatorBtnText}>{op}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
                 <TouchableOpacity
-                  style={styles.calcOpBtn}
-                  onPress={() => appendOperator('+')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.calcOpText}>+</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.calcOpBtn}
-                  onPress={() => appendOperator('-')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.calcOpText}>−</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.calcOpBtn}
-                  onPress={() => appendOperator('*')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.calcOpText}>×</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.calcOpBtn}
-                  onPress={() => appendOperator('/')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.calcOpText}>÷</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.calcEqualsBtn}
+                  style={styles.calcEqualsButton}
                   onPress={evaluateCalculator}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.calcEqualsText}>=</Text>
+                  <Text style={styles.calcEqualsButtonText}>=</Text>
                 </TouchableOpacity>
               </View>
             )}
 
             {/* Quick Amount Chips */}
-            <View style={styles.presetRow}>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => addPresetAmount(10000)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.presetChipText}>+10rb</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => addPresetAmount(20000)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.presetChipText}>+20rb</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => addPresetAmount(50000)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.presetChipText}>+50rb</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => addPresetAmount(100000)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.presetChipText}>+100rb</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => addPresetAmount(500000)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.presetChipText}>+500rb</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.amountPresetsScroll}
+            >
+              {[
+                { label: '+10rb', val: 10000 },
+                { label: '+20rb', val: 20000 },
+                { label: '+50rb', val: 50000 },
+                { label: '+100rb', val: 100000 },
+                { label: '+500rb', val: 500000 },
+                { label: '+1jt', val: 1000000 },
+              ].map((p, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.amountPresetChip}
+                  onPress={() => addPresetAmount(p.val)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.amountPresetChipText}>{p.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
-          {/* Input Keterangan / Nama */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Keterangan Transaksi</Text>
-            <View style={styles.inputBox}>
+          {/* 4. Keterangan Transaksi */}
+          <View style={styles.formGroup}>
+            <Text style={styles.formGroupLabel}>Keterangan Transaksi</Text>
+            <View style={styles.formInputBox}>
               <Ionicons name="document-text-outline" size={18} color={Palette.textTertiary} />
               <TextInput
-                style={styles.textInput}
+                style={styles.formTextInput}
                 placeholder={
                   type === 'expense'
                     ? 'Contoh: Kopi, Makan Siang, Bensin, Belanja'
@@ -666,30 +730,41 @@ export default function AddTransactionScreen() {
             </View>
           </View>
 
-          {/* Banner Indikator Kategori Terpilih */}
-          <View style={styles.fieldGroup}>
-            <View style={styles.categoryHeaderRow}>
-              <Text style={styles.fieldLabel}>Pilih Kategori</Text>
-              <View style={styles.selectedCategoryBadge}>
-                <Ionicons name={selectedCategory.icon} size={14} color={selectedCategory.color} />
-                <Text style={styles.selectedCategoryBadgeText}>
-                  Terpilih: {selectedCategory.name}
-                </Text>
-              </View>
+          {/* 5. Pilih Kategori */}
+          <View style={styles.formGroup}>
+            <View style={styles.formGroupHeaderRow}>
+              <Text style={styles.formGroupLabel}>Pilih Kategori</Text>
+              {selectedCategory ? (
+                <View style={styles.categorySelectedTag}>
+                  <Ionicons name={selectedCategory.icon} size={13} color={selectedCategory.color} />
+                  <Text
+                    style={[styles.categorySelectedTagText, { color: selectedCategory.color }]}
+                    numberOfLines={1}
+                  >
+                    {selectedCategory.name}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.categorySelectedTag, { borderColor: Palette.textMuted }]}>
+                  <Text style={[styles.categorySelectedTagText, { color: Palette.textTertiary }]}>
+                    Belum dipilih
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Grid Kategori Interaktif */}
-            <View style={styles.categoryGrid}>
+            {/* Grid Kategori 4-Kolom Rapi dengan Spasi Lega */}
+            <View style={styles.categoryCardGrid}>
               {categories.map((cat) => {
-                const isSelected = cat.id === selectedCategory.id;
+                const isSelected = selectedCategory !== null && cat.id === selectedCategory.id;
                 return (
                   <TouchableOpacity
                     key={cat.id}
                     style={[
-                      styles.categoryCard,
+                      styles.categoryTile,
                       isSelected && {
                         borderColor: cat.color,
-                        backgroundColor: cat.bgColor,
+                        backgroundColor: `${cat.color}15`,
                         borderWidth: 2,
                       },
                     ]}
@@ -698,7 +773,7 @@ export default function AddTransactionScreen() {
                   >
                     <View
                       style={[
-                        styles.categoryIconWrap,
+                        styles.categoryTileIconWrap,
                         {
                           backgroundColor: isSelected ? '#FFFFFF' : Palette.surfaceElevated,
                         },
@@ -713,10 +788,10 @@ export default function AddTransactionScreen() {
 
                     <Text
                       style={[
-                        styles.categoryCardText,
+                        styles.categoryTileTitle,
                         isSelected && { color: Palette.textPrimary, fontWeight: '700' },
                       ]}
-                      numberOfLines={1}
+                      numberOfLines={2}
                     >
                       {cat.name}
                     </Text>
@@ -724,9 +799,9 @@ export default function AddTransactionScreen() {
                     {isSelected && (
                       <Ionicons
                         name="checkmark-circle"
-                        size={16}
+                        size={15}
                         color={cat.color}
-                        style={styles.checkIcon}
+                        style={styles.categoryTileCheckIcon}
                       />
                     )}
                   </TouchableOpacity>
@@ -735,13 +810,79 @@ export default function AddTransactionScreen() {
             </View>
           </View>
 
-          {/* Input Catatan */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Catatan Tambahan (Opsional)</Text>
-            <View style={styles.inputBox}>
-              <Ionicons name="pencil-outline" size={18} color={Palette.textTertiary} />
+          {/* 6. Sumber Dana / Dompet */}
+          <View style={styles.formGroup}>
+            <View style={styles.formGroupHeaderRow}>
+              <Text style={styles.formGroupLabel}>
+                {type === 'income' ? 'Masuk ke Dompet' : 'Sumber Dana / Dompet'}
+              </Text>
+              <View style={styles.walletSelectedTag}>
+                <Ionicons name={selectedWallet.icon} size={13} color={selectedWallet.color} />
+                <Text style={styles.walletSelectedTagText}>{selectedWallet.name}</Text>
+              </View>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.walletHorizontalScroll}
+            >
+              {WALLET_OPTIONS.map((wallet) => {
+                const isSelected = wallet.id === selectedWallet.id;
+                return (
+                  <TouchableOpacity
+                    key={wallet.id}
+                    style={[
+                      styles.walletPillBtn,
+                      isSelected && {
+                        backgroundColor: wallet.bgColor,
+                        borderColor: wallet.color,
+                        borderWidth: 1.5,
+                      },
+                    ]}
+                    onPress={() => {
+                      if (Platform.OS !== 'web') {
+                        Haptics.selectionAsync();
+                      }
+                      setSelectedWallet(wallet);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View
+                      style={[
+                        styles.walletPillIconWrap,
+                        {
+                          backgroundColor: isSelected ? '#FFFFFF' : Palette.surfaceElevated,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={wallet.icon}
+                        size={14}
+                        color={isSelected ? wallet.color : Palette.textSecondary}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.walletPillText,
+                        isSelected && { color: Palette.textPrimary, fontWeight: '700' },
+                      ]}
+                    >
+                      {wallet.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* 7. Catatan Tambahan */}
+          <View style={styles.formGroup}>
+            <Text style={styles.formGroupLabel}>Catatan Tambahan (Opsional)</Text>
+            <View style={styles.formInputBox}>
+              <Ionicons name="pencil-outline" size={17} color={Palette.textTertiary} />
               <TextInput
-                style={styles.textInput}
+                style={styles.formTextInput}
                 placeholder="Tambahkan catatan khusus..."
                 placeholderTextColor={Palette.textMuted}
                 value={note}
@@ -751,24 +892,164 @@ export default function AddTransactionScreen() {
             </View>
           </View>
 
-          {/* Tombol Simpan */}
+          {/* 8. Lampiran Foto Struk / Bukti Transfer */}
+          <View style={styles.formGroup}>
+            <View style={styles.formGroupHeaderRow}>
+              <Text style={styles.formGroupLabel}>Lampiran Foto Struk / Bukti Transfer</Text>
+              <Text style={styles.optionalTagText}>Opsional</Text>
+            </View>
+
+            {receiptUri ? (
+              <View style={styles.receiptPreviewCard}>
+                <Image source={{ uri: receiptUri }} style={styles.receiptThumbnail} />
+                <View style={styles.receiptDetailsWrap}>
+                  <View style={styles.receiptStatusRow}>
+                    <Ionicons name="checkmark-circle" size={15} color={Palette.emerald} />
+                    <Text style={styles.receiptStatusText}>Foto Terlampir</Text>
+                  </View>
+
+                  <View style={styles.receiptActionsRow}>
+                    <TouchableOpacity
+                      style={styles.receiptActionBtn}
+                      onPress={handleFlipReceipt}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="swap-horizontal" size={13} color={Palette.indigo} />
+                      <Text style={styles.receiptActionBtnTextIndigo}>Balik</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.receiptActionBtn}
+                      onPress={handleRotateReceipt}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="refresh" size={13} color={Palette.textSecondary} />
+                      <Text style={styles.receiptActionBtnText}>Putar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.receiptActionBtn}
+                      onPress={() => setShowPhotoOptionsModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="camera-reverse" size={13} color={Palette.textSecondary} />
+                      <Text style={styles.receiptActionBtnText}>Ganti</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.receiptDeleteBtn}
+                      onPress={handleRemoveReceipt}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="trash-outline" size={13} color={Palette.rose} />
+                      <Text style={styles.receiptDeleteBtnText}>Hapus</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.receiptUploadDashedBox}
+                onPress={() => setShowPhotoOptionsModal(true)}
+                activeOpacity={0.75}
+              >
+                <View style={styles.receiptUploadIconCircle}>
+                  <Ionicons name="camera-outline" size={22} color={Palette.emerald} />
+                </View>
+                <View style={styles.receiptUploadTextWrap}>
+                  <Text style={styles.receiptUploadTitle}>
+                    + Lampirkan Foto Struk / Bukti Transfer
+                  </Text>
+                  <Text style={styles.receiptUploadSubtitle}>
+                    Foto langsung dengan kamera atau ambil dari galeri
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* 9. Tombol Simpan */}
           <TouchableOpacity
             style={[
-              styles.saveButton,
+              styles.saveTransactionBtn,
               type === 'income' ? styles.saveBtnIncome : styles.saveBtnExpense,
               !isFormValid && styles.saveBtnDisabled,
             ]}
             onPress={handleSave}
             disabled={!isFormValid}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.saveButtonText}>
+            <Text style={styles.saveTransactionBtnText}>
               Simpan {formatIDR(computedAmount)}
             </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Sheet Pilihan Sumber Foto (Kamera Depan / Belakang / Galeri) */}
+      {showPhotoOptionsModal && (
+        <View style={styles.photoModalOverlay}>
+          <TouchableOpacity
+            style={styles.photoModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowPhotoOptionsModal(false)}
+          />
+          <View style={styles.photoModalContent}>
+            <View style={styles.photoModalHeader}>
+              <Text style={styles.photoModalTitle}>Lampirkan Bukti / Struk</Text>
+              <TouchableOpacity
+                style={styles.photoModalCloseBtn}
+                onPress={() => setShowPhotoOptionsModal(false)}
+              >
+                <Ionicons name="close" size={20} color={Palette.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.photoModalSubtitle}>
+              Pilih metode untuk melampirkan foto bukti pembayaran atau struk:
+            </Text>
+
+            <TouchableOpacity
+              style={styles.photoOptionBtn}
+              onPress={handlePickCamera}
+              activeOpacity={0.8}
+            >
+              <View style={styles.photoOptionIconWrapCamera}>
+                <Ionicons name="camera" size={22} color={Palette.emerald} />
+              </View>
+              <View style={styles.photoOptionTextWrap}>
+                <Text style={styles.photoOptionTitle}>Buka Kamera (Foto Langsung)</Text>
+                <Text style={styles.photoOptionDesc}>Ambil foto langsung menggunakan kamera perangkat</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Palette.textTertiary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.photoOptionBtn}
+              onPress={handlePickGallery}
+              activeOpacity={0.8}
+            >
+              <View style={styles.photoOptionIconWrapGallery}>
+                <Ionicons name="images" size={22} color={Palette.cyan} />
+              </View>
+              <View style={styles.photoOptionTextWrap}>
+                <Text style={styles.photoOptionTitle}>Pilih dari Galeri</Text>
+                <Text style={styles.photoOptionDesc}>Ambil dari file atau screenshot di perangkat</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Palette.textTertiary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.photoModalCancelBtn}
+              onPress={() => setShowPhotoOptionsModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.photoModalCancelText}>Batal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -777,548 +1058,793 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Palette.background,
-    width: '100%',
   },
   flex: {
     flex: 1,
-    width: '100%',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
-    paddingTop: Platform.OS === 'android' ? 40 : 12,
+    paddingTop: Platform.OS === 'android' ? 36 : 10,
     paddingBottom: Spacing.md,
-    backgroundColor: Palette.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Palette.border,
     width: '100%',
     maxWidth: 480,
     alignSelf: 'center',
   },
   closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Palette.surfaceElevated,
-    justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Palette.surface,
+    borderWidth: 1,
+    borderColor: Palette.border,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: Palette.textPrimary,
   },
   headerPlaceholder: {
-    width: 34,
+    width: 36,
   },
-  container: {
+  scrollView: {
     flex: 1,
-    width: '100%',
   },
-  contentContainer: {
+  scrollContent: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: 40,
+    paddingTop: 4,
+    paddingBottom: 48,
     width: '100%',
     maxWidth: 480,
     alignSelf: 'center',
   },
-  typeSegment: {
+  // 1. Type Switcher Segment
+  typeSegmentCard: {
     flexDirection: 'row',
     backgroundColor: Palette.surface,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: 4,
     borderWidth: 1,
     borderColor: Palette.border,
     marginBottom: Spacing.md,
-    width: '100%',
+    gap: 6,
   },
-  typeBtn: {
+  typeSegmentBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: Radius.sm,
-    gap: 6,
+    borderRadius: Radius.md,
+    gap: 8,
   },
-  typeBtnActiveExpense: {
+  typeSegmentBtnActiveExpense: {
     backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
   },
-  typeBtnActiveIncome: {
+  typeSegmentBtnActiveIncome: {
     backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
-  typeBtnText: {
-    fontSize: 13,
+  typeSegmentText: {
+    fontSize: 14,
     fontWeight: '600',
     color: Palette.textTertiary,
   },
-  typeBtnTextActiveExpense: {
+  typeSegmentTextActiveExpense: {
     color: Palette.rose,
+    fontWeight: '700',
   },
-  typeBtnTextActiveIncome: {
+  typeSegmentTextActiveIncome: {
     color: Palette.emerald,
+    fontWeight: '700',
   },
-  realtimeCard: {
+  // Reusable Card Style
+  cardContainer: {
     backgroundColor: Palette.surface,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Palette.border,
     marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  realtimeHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
-  realtimeTitleRow: {
+  cardHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  pulsingDot: {
+  greenLiveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+    backgroundColor: Palette.emerald,
   },
-  realtimeTitle: {
+  cardHeaderTitle: {
     fontSize: 11,
-    fontWeight: '700',
-    color: Palette.textSecondary,
-    textTransform: 'uppercase',
+    fontWeight: '800',
+    color: Palette.textTertiary,
     letterSpacing: 0.5,
   },
-  modeToggleBtn: {
+  cardHeaderActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Palette.surfaceElevated,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
     gap: 4,
-    borderWidth: 1,
-    borderColor: Palette.border,
   },
-  modeToggleBtnActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
-  },
-  modeToggleText: {
-    fontSize: 10,
+  cardHeaderActionText: {
+    fontSize: 11,
     fontWeight: '600',
-    color: Palette.textTertiary,
+    color: Palette.textSecondary,
   },
-  modeToggleTextActive: {
-    color: Palette.indigo,
-    fontWeight: '700',
-  },
-  timeDisplayRow: {
+  // Time Card Details
+  timeInfoBox: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: Palette.surfaceElevated,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Palette.border,
   },
-  timeMainCol: {
-    flex: 1,
+  timeInfoLeft: {
+    gap: 2,
   },
-  timeValueText: {
-    fontSize: 16,
+  clockLargeText: {
+    fontSize: 18,
     fontWeight: '800',
     color: Palette.textPrimary,
-    letterSpacing: 0.2,
+    fontVariant: ['tabular-nums'],
   },
-  dateValueText: {
+  dateSubText: {
     fontSize: 12,
-    color: Palette.textSecondary,
-    marginTop: 2,
+    color: Palette.textTertiary,
   },
-  timeBadgeWrap: {
+  dateBadgeWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
     backgroundColor: Palette.emeraldMuted,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: Radius.xs,
     borderWidth: 1,
     borderColor: '#A7F3D0',
+    gap: 4,
   },
-  timeBadgeText: {
-    fontSize: 11,
+  dateBadgeText: {
+    fontSize: 12,
     fontWeight: '700',
     color: Palette.emerald,
   },
-  dateSelectorRow: {
+  dateButtonsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
+    gap: 8,
   },
-  dateChip: {
+  dateQuickBtn: {
     flex: 1,
-    paddingVertical: 6,
-    borderRadius: Radius.xs,
+    paddingVertical: 8,
     backgroundColor: Palette.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Palette.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dateChipActive: {
+  dateQuickBtnActive: {
     backgroundColor: Palette.emerald,
     borderColor: Palette.emerald,
   },
-  dateChipText: {
-    fontSize: 11,
+  dateQuickBtnText: {
+    fontSize: 12,
     fontWeight: '600',
     color: Palette.textSecondary,
   },
-  dateChipTextActive: {
+  dateQuickBtnTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  adjustTimeChip: {
-    flexDirection: 'row',
-    gap: 4,
-    backgroundColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
-  },
-  customTimePanel: {
-    marginTop: 10,
-    paddingTop: 10,
+  timeAdjustWrap: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
     borderTopWidth: 1,
     borderTopColor: Palette.border,
+    gap: 8,
   },
-  customTimePanelLabel: {
+  timeAdjustTitle: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Palette.textTertiary,
     letterSpacing: 0.5,
-    marginBottom: 6,
   },
-  timeAdjustRow: {
+  timeAdjustGrid: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 6,
+    gap: 4,
   },
-  timeAdjustBtn: {
-    backgroundColor: Palette.surfaceElevated,
-    paddingHorizontal: 8,
+  timeAdjustGridBtn: {
+    flex: 1,
     paddingVertical: 6,
+    backgroundColor: Palette.surfaceElevated,
     borderRadius: Radius.xs,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: Palette.border,
   },
-  timeAdjustBtnText: {
+  timeAdjustGridBtnText: {
     fontSize: 11,
     fontWeight: '600',
     color: Palette.textSecondary,
   },
-  timeCurrentBox: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+  timeAdjustCenterBox: {
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Palette.indigoMuted,
     borderRadius: Radius.xs,
     borderWidth: 1,
-    borderColor: Palette.indigo,
+    borderColor: '#C7D2FE',
   },
-  timeCurrentText: {
-    fontSize: 13,
+  timeAdjustCenterText: {
+    fontSize: 12,
     fontWeight: '800',
     color: Palette.indigo,
   },
-  amountCard: {
-    backgroundColor: Palette.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.lg,
+  // Nominal Card Details
+  calcTogglePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.xs,
     borderWidth: 1,
     borderColor: Palette.border,
-    marginBottom: Spacing.md,
-    width: '100%',
-    overflow: 'hidden',
+    gap: 4,
   },
-  amountHeaderRow: {
+  calcTogglePillActive: {
+    backgroundColor: Palette.emeraldMuted,
+    borderColor: '#A7F3D0',
+  },
+  calcTogglePillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.textSecondary,
+  },
+  calcTogglePillTextActive: {
+    color: Palette.emerald,
+    fontWeight: '700',
+  },
+  amountInputDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  currencyRpLabel: {
+    fontSize: 26,
+    fontWeight: '800',
+    marginRight: 6,
+  },
+  currencyExpense: {
+    color: Palette.rose,
+  },
+  currencyIncome: {
+    color: Palette.emerald,
+  },
+  amountValueInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: '900',
+    color: Palette.textPrimary,
+    letterSpacing: -0.5,
+    padding: 0,
+    margin: 0,
+  },
+  amountValueExpense: {
+    color: Palette.textPrimary,
+  },
+  amountValueIncome: {
+    color: Palette.textPrimary,
+  },
+  amountClearBtn: {
+    padding: 4,
+  },
+  liveCalcResultWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.emeraldMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    marginBottom: Spacing.sm,
+    gap: 6,
+  },
+  liveCalcResultText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.emerald,
+  },
+  liveCalcUseBtn: {
+    backgroundColor: Palette.emerald,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+  },
+  liveCalcUseBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  calcOperatorsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: Spacing.sm,
+  },
+  calcOperatorBtn: {
+    flex: 1,
+    height: 38,
+    backgroundColor: Palette.surfaceElevated,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calcOperatorBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+  },
+  calcEqualsButton: {
+    flex: 1.2,
+    height: 38,
+    backgroundColor: Palette.emerald,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calcEqualsButtonText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  amountPresetsScroll: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  amountPresetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: Palette.surfaceElevated,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  amountPresetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Palette.textSecondary,
+  },
+  // Form Groups
+  formGroup: {
+    marginBottom: Spacing.md,
+  },
+  formGroupHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  amountLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Palette.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  calcToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Palette.surfaceElevated,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.xs,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: Palette.border,
-  },
-  calcToggleBtnActive: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  calcToggleText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Palette.textTertiary,
-  },
-  calcToggleTextActive: {
-    color: Palette.emerald,
-    fontWeight: '700',
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  currencyPrefix: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Palette.textSecondary,
-    marginRight: 6,
-  },
-  amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    padding: 0,
-    borderWidth: 0,
-    ...(Platform.OS === 'web'
-      ? ({
-          outlineWidth: 0,
-          outlineStyle: 'none',
-          boxShadow: 'none',
-        } as any)
-      : {}),
-  },
-  amountInputIncome: {
-    color: Palette.emerald,
-  },
-  amountInputExpense: {
-    color: Palette.rose,
-  },
-  clearInputBtn: {
-    padding: 4,
-  },
-  liveCalcRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Radius.xs,
-    marginTop: 8,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  liveCalcText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    color: Palette.emerald,
-  },
-  applyCalcBtn: {
-    backgroundColor: Palette.emerald,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.xs,
-  },
-  applyCalcBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  calcPadGrid: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-  },
-  calcOpBtn: {
-    flex: 1,
-    height: 38,
-    backgroundColor: Palette.surfaceElevated,
-    borderRadius: Radius.xs,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Palette.border,
-  },
-  calcOpText: {
-    fontSize: 16,
+  formGroupLabel: {
+    fontSize: 13,
     fontWeight: '700',
     color: Palette.textPrimary,
-  },
-  calcEqualsBtn: {
-    flex: 1,
-    height: 38,
-    backgroundColor: Palette.emerald,
-    borderRadius: Radius.xs,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  calcEqualsText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
-  },
-  presetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: Radius.xs,
-    backgroundColor: Palette.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Palette.border,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Palette.textSecondary,
-  },
-  fieldGroup: {
-    marginBottom: Spacing.md,
-    width: '100%',
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Palette.textSecondary,
     marginBottom: 6,
   },
-  inputBox: {
+  formInputBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Palette.surface,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     borderWidth: 1,
     borderColor: Palette.border,
     gap: 10,
   },
-  textInput: {
+  formTextInput: {
     flex: 1,
     fontSize: 14,
     color: Palette.textPrimary,
     padding: 0,
-    ...(Platform.OS === 'web'
-      ? ({
-          outlineWidth: 0,
-          outlineStyle: 'none',
-        } as any)
-      : {}),
   },
-  categoryHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  selectedCategoryBadge: {
+  // Category Grid (4 Kolom Rapi)
+  categorySelectedTag: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+    backgroundColor: Palette.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Palette.border,
     gap: 4,
   },
-  selectedCategoryBadgeText: {
+  categorySelectedTagText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: Palette.textSecondary,
+    fontWeight: '700',
   },
-  categoryGrid: {
+  categoryCardGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'space-between',
   },
-  categoryCard: {
+  categoryTile: {
     width: '23%',
-    flexGrow: 1,
-    minWidth: 70,
     backgroundColor: Palette.surface,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.md,
     paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: Palette.border,
+    minHeight: 76,
     position: 'relative',
   },
-  categoryIconWrap: {
+  categoryTileIconWrap: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 4,
   },
-  categoryCardText: {
+  categoryTileTitle: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
     color: Palette.textSecondary,
     textAlign: 'center',
+    lineHeight: 12,
   },
-  checkIcon: {
+  categoryTileCheckIcon: {
     position: 'absolute',
-    top: 3,
-    right: 3,
+    top: 4,
+    right: 4,
   },
-  saveButton: {
+  // Wallet Horizontal Scroll
+  walletSelectedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 4,
+  },
+  walletSelectedTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.textSecondary,
+  },
+  walletHorizontalScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  walletPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.full,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 6,
+  },
+  walletPillIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Palette.textSecondary,
+  },
+  // Receipt Attachment Card
+  optionalTagText: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  receiptPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 12,
+  },
+  receiptThumbnail: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.surfaceElevated,
+  },
+  receiptDetailsWrap: {
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  receiptStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  receiptStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.emerald,
+  },
+  receiptActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  receiptActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 3,
+  },
+  receiptActionBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.textSecondary,
+  },
+  receiptActionBtnTextIndigo: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.indigo,
+  },
+  receiptDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF1F2',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    gap: 3,
+  },
+  receiptDeleteBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.rose,
+  },
+  receiptUploadDashedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Palette.borderHighlight,
+    borderStyle: 'dashed',
+    gap: 10,
+  },
+  receiptUploadIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Palette.emeraldMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptUploadTextWrap: {
+    flex: 1,
+  },
+  receiptUploadTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 2,
+  },
+  receiptUploadSubtitle: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  // 9. Save Transaction CTA
+  saveTransactionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: Radius.md,
     gap: 8,
-    marginTop: Spacing.sm,
-    shadowColor: Palette.emerald,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    marginTop: 8,
+    marginBottom: 24,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
     elevation: 3,
-  },
-  saveBtnIncome: {
-    backgroundColor: Palette.emerald,
   },
   saveBtnExpense: {
     backgroundColor: Palette.rose,
+    shadowColor: Palette.rose,
+  },
+  saveBtnIncome: {
+    backgroundColor: Palette.emerald,
+    shadowColor: Palette.emerald,
   },
   saveBtnDisabled: {
-    backgroundColor: Palette.textMuted,
+    backgroundColor: Palette.borderHighlight,
     shadowOpacity: 0,
     elevation: 0,
   },
-  saveButtonText: {
-    color: '#FFFFFF',
+  saveTransactionBtnText: {
     fontSize: 15,
     fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  // Photo Picker Modal Styles
+  photoModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 99999,
+    elevation: 99999,
+    justifyContent: 'flex-end',
+  },
+  photoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  photoModalContent: {
+    backgroundColor: Palette.surface,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xl,
+    paddingBottom: Platform.OS === 'ios' ? 40 : Spacing.xl,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  photoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  photoModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Palette.textPrimary,
+  },
+  photoModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Palette.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoModalSubtitle: {
+    fontSize: 12,
+    color: Palette.textTertiary,
+    marginBottom: Spacing.lg,
+  },
+  photoOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    marginBottom: Spacing.sm,
+    gap: 12,
+  },
+  photoOptionIconWrapCamera: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.emeraldMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOptionIconWrapCameraFront: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.purpleMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOptionIconWrapGallery: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.cyanMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOptionTextWrap: {
+    flex: 1,
+  },
+  photoOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 2,
+  },
+  photoOptionDesc: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  photoModalCancelBtn: {
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    backgroundColor: Palette.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  photoModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Palette.textSecondary,
   },
 });

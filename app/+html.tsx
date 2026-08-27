@@ -21,6 +21,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-title" content="CatatKas" />
         <link rel="apple-touch-icon" href="/assets/images/icon.png" />
         <link rel="manifest" href="/manifest.json" />
+        <link rel="canonical" href="/" />
 
         <ScrollViewStyleReset />
 
@@ -45,12 +46,40 @@ export default function Root({ children }: PropsWithChildren) {
               }
               html, body, #root {
                 width: 100%;
+                height: 100%;
                 min-height: 100%;
+                min-height: 100dvh;
                 margin: 0;
                 padding: 0;
                 background-color: #F8FAFC;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 overflow-x: hidden;
+              }
+              /* Sembunyikan badge & widget Netlify secara menyeluruh */
+              [data-netlify-deploy-id],
+              .netlify-badge,
+              .netlify-feedback-drawer,
+              #netlify-drawer,
+              netlify-drawer,
+              netlify-drawer-container,
+              iframe[src*="netlify"],
+              div[class*="netlify"],
+              div[id*="netlify"],
+              a[href*="netlify.com"],
+              img[src*="netlify"],
+              svg[class*="netlify"],
+              div:has(> a[href*="netlify.com"]),
+              div:has(> iframe[src*="netlify"]) {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                width: 0px !important;
+                height: 0px !important;
+                position: absolute !important;
+                top: -9999px !important;
+                left: -9999px !important;
+                z-index: -9999 !important;
               }
               input, textarea, select, button {
                 outline: none !important;
@@ -63,6 +92,42 @@ export default function Root({ children }: PropsWithChildren) {
                 outline-width: 0 !important;
                 box-shadow: none !important;
               }
+            `,
+          }}
+        />
+
+        {/* Script penghapus instan untuk badge / drawer Netlify */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function purgeNetlify() {
+                  try {
+                    var selectors = [
+                      '#netlify-drawer',
+                      'netlify-drawer',
+                      'netlify-drawer-container',
+                      '[class*="netlify"]',
+                      '[id*="netlify"]',
+                      'iframe[src*="netlify"]',
+                      'a[href*="netlify.com"]',
+                      'div[data-netlify-deploy-id]'
+                    ];
+                    selectors.forEach(function(sel) {
+                      var els = document.querySelectorAll(sel);
+                      for (var i = 0; i < els.length; i++) {
+                        els[i].remove();
+                      }
+                    });
+                  } catch (e) {}
+                }
+                if (typeof window !== 'undefined') {
+                  document.addEventListener('DOMContentLoaded', purgeNetlify);
+                  window.addEventListener('load', purgeNetlify);
+                  var observer = new MutationObserver(purgeNetlify);
+                  observer.observe(document.documentElement, { childList: true, subtree: true });
+                }
+              })();
             `,
           }}
         />

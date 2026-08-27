@@ -9,6 +9,7 @@
     }
   ],
   "start_url": "/",
+  "scope": "/",
   "background_color": "#F8FAFC",
   "theme_color": "#F8FAFC",
   "display": "standalone",

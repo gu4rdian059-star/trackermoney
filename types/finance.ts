@@ -15,6 +15,17 @@ export interface Category {
   type: TransactionType;
 }
 
+export type WalletType = 'cash' | 'bank' | 'ewallet';
+
+export interface WalletOption {
+  id: string;
+  name: string;
+  type: WalletType;
+  icon: IconName;
+  color: string;
+  bgColor: string;
+}
+
 export interface Transaction {
   id: string;
   title: string;
@@ -24,6 +35,10 @@ export interface Transaction {
   categoryName: string;
   categoryIcon: IconName;
   categoryColor: string;
+  walletId?: string;
+  walletName?: string;
+  walletType?: WalletType;
+  receiptUri?: string;
   date: string; // YYYY-MM-DD
   time?: string; // HH:mm
   note?: string;
@@ -169,3 +184,108 @@ export const INCOME_CATEGORIES: Category[] = [
 ];
 
 export const ALL_CATEGORIES: Category[] = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
+
+export const WALLET_OPTIONS: WalletOption[] = [
+  // Tunai / Dompet
+  {
+    id: 'cash',
+    name: 'Tunai / Dompet',
+    type: 'cash',
+    icon: 'cash-outline',
+    color: Palette.emerald,
+    bgColor: Palette.emeraldMuted,
+  },
+  // Rekening Bank
+  {
+    id: 'bca',
+    name: 'Bank BCA',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.cyan,
+    bgColor: Palette.cyanMuted,
+  },
+  {
+    id: 'mandiri',
+    name: 'Bank Mandiri',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.indigo,
+    bgColor: Palette.indigoMuted,
+  },
+  {
+    id: 'bri',
+    name: 'Bank BRI',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.cyan,
+    bgColor: Palette.cyanMuted,
+  },
+  {
+    id: 'bni',
+    name: 'Bank BNI',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.amber,
+    bgColor: Palette.amberMuted,
+  },
+  {
+    id: 'jago',
+    name: 'Bank Jago',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.purple,
+    bgColor: Palette.purpleMuted,
+  },
+  {
+    id: 'seabank',
+    name: 'SeaBank',
+    type: 'bank',
+    icon: 'card-outline',
+    color: Palette.amber,
+    bgColor: Palette.amberMuted,
+  },
+  // E-Wallet
+  {
+    id: 'gopay',
+    name: 'GoPay',
+    type: 'ewallet',
+    icon: 'phone-portrait-outline',
+    color: Palette.cyan,
+    bgColor: Palette.cyanMuted,
+  },
+  {
+    id: 'ovo',
+    name: 'OVO',
+    type: 'ewallet',
+    icon: 'phone-portrait-outline',
+    color: Palette.purple,
+    bgColor: Palette.purpleMuted,
+  },
+  {
+    id: 'dana',
+    name: 'DANA',
+    type: 'ewallet',
+    icon: 'phone-portrait-outline',
+    color: Palette.cyan,
+    bgColor: Palette.cyanMuted,
+  },
+  {
+    id: 'shopeepay',
+    name: 'ShopeePay',
+    type: 'ewallet',
+    icon: 'phone-portrait-outline',
+    color: Palette.rose,
+    bgColor: Palette.roseMuted,
+  },
+  {
+    id: 'other_wallet',
+    name: 'Lainnya',
+    type: 'ewallet',
+    icon: 'wallet-outline',
+    color: Palette.textSecondary,
+    bgColor: Palette.surfaceElevated,
+  },
+];
+
+export const DEFAULT_WALLET: WalletOption = WALLET_OPTIONS[0];
+

@@ -9,6 +9,7 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [tx, setTx] = useState<Transaction | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showFullscreenPhoto, setShowFullscreenPhoto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -157,6 +159,23 @@ export default function TransactionDetailScreen() {
 
           <View style={styles.detailDivider} />
 
+          {/* Sumber Dana / Dompet */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailLabelWrap}>
+              <Ionicons name="wallet-outline" size={16} color={Palette.textTertiary} />
+              <Text style={styles.detailLabel}>
+                {isIncome ? 'Masuk ke' : 'Sumber Dana'}
+              </Text>
+            </View>
+            <View style={styles.detailWalletBadge}>
+              <Text style={styles.detailWalletText}>
+                {tx.walletName || 'Tunai / Dompet'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.detailDivider} />
+
           <View style={styles.detailRow}>
             <View style={styles.detailLabelWrap}>
               <Ionicons name="calendar-outline" size={16} color={Palette.textTertiary} />
@@ -200,6 +219,40 @@ export default function TransactionDetailScreen() {
             <Text style={styles.detailValueMuted}>{tx.id}</Text>
           </View>
         </View>
+
+        {/* Kartu Foto Struk / Bukti Transfer Jika Ada */}
+        {tx.receiptUri ? (
+          <View style={styles.receiptSectionCard}>
+            <View style={styles.receiptSectionHeader}>
+              <View style={styles.receiptSectionTitleWrap}>
+                <Ionicons name="image" size={16} color={Palette.emerald} />
+                <Text style={styles.receiptSectionTitle}>Foto Struk / Bukti Transfer</Text>
+              </View>
+              <Text style={styles.receiptHintText}>Ketuk untuk perbesar</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.receiptImageWrap}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.selectionAsync();
+                }
+                setShowFullscreenPhoto(true);
+              }}
+              activeOpacity={0.9}
+            >
+              <Image
+                source={{ uri: tx.receiptUri }}
+                style={styles.receiptImage}
+                resizeMode="cover"
+              />
+              <View style={styles.receiptZoomOverlay}>
+                <Ionicons name="expand-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.receiptZoomText}>Lihat Ukuran Penuh</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* Tombol Hapus */}
         <TouchableOpacity
@@ -257,6 +310,40 @@ export default function TransactionDetailScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Modal Pratinjau Foto Ukuran Penuh */}
+      <Modal
+        visible={showFullscreenPhoto}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFullscreenPhoto(false)}
+      >
+        <View style={styles.fullscreenOverlay}>
+          <SafeAreaView style={styles.fullscreenSafeArea}>
+            <View style={styles.fullscreenHeader}>
+              <TouchableOpacity
+                style={styles.fullscreenCloseBtn}
+                onPress={() => setShowFullscreenPhoto(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.fullscreenTitle}>Bukti / Struk Transaksi</Text>
+              <View style={styles.fullscreenPlaceholder} />
+            </View>
+
+            <View style={styles.fullscreenImageContainer}>
+              {tx.receiptUri ? (
+                <Image
+                  source={{ uri: tx.receiptUri }}
+                  style={styles.fullscreenImage}
+                  resizeMode="contain"
+                />
+              ) : null}
+            </View>
+          </SafeAreaView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -514,5 +601,124 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  // Wallet Badge
+  detailWalletBadge: {
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
+  },
+  detailWalletText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+  },
+  // Receipt Image Card
+  receiptSectionCard: {
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    marginBottom: Spacing.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  receiptSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  receiptSectionTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  receiptSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+  },
+  receiptHintText: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  receiptImageWrap: {
+    width: '100%',
+    height: 180,
+    borderRadius: Radius.sm,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: Palette.surfaceElevated,
+  },
+  receiptImage: {
+    width: '100%',
+    height: '100%',
+  },
+  receiptZoomOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    gap: 4,
+  },
+  receiptZoomText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Fullscreen Photo Modal
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  fullscreenSafeArea: {
+    flex: 1,
+  },
+  fullscreenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 12,
+    zIndex: 10,
+  },
+  fullscreenCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  fullscreenPlaceholder: {
+    width: 40,
+  },
+  fullscreenImageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
   },
 });

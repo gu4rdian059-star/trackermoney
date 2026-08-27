@@ -46,6 +46,7 @@ export default function RootLayout() {
       <View style={styles.appWrapper}>
         <View style={styles.responsiveContainer}>
           <Stack
+            initialRouteName="(tabs)"
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: Palette.background },

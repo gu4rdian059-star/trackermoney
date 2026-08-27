@@ -8,6 +8,7 @@ import { Palette } from '../../constants/theme';
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Palette.emerald,
@@ -27,11 +28,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Ikhtisar',
+          title: 'Beranda',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? 'wallet' : 'wallet-outline'}
-              size={22}
+              name={focused ? 'home' : 'home-outline'}
+              size={23}
               color={color}
             />
           ),
@@ -44,7 +45,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'receipt' : 'receipt-outline'}
-              size={22}
+              size={23}
               color={color}
             />
           ),
@@ -57,7 +58,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'pie-chart' : 'pie-chart-outline'}
-              size={22}
+              size={23}
               color={color}
             />
           ),
@@ -72,22 +73,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopColor: Palette.border,
     borderTopWidth: 1,
-    height: Platform.OS === 'ios' ? 88 : 64,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-    elevation: 4,
+    paddingBottom: 28, // Cukup besar untuk bottom safe area tapi tidak menyebabkan clipping
+    minHeight: 85, // Gunakan minHeight agar bisa meluas, jangan height fix
+    elevation: 6,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    overflow: 'visible', // Mencegah konten yang sedikit lebih besar terpotong
   },
   tabBarLabel: {
     fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
+    fontWeight: '700',
+    marginTop: 4,
     letterSpacing: 0.2,
+    overflow: 'visible',
   },
   tabBarItem: {
-    paddingVertical: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 4,
   },
 });

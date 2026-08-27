@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction } from '../types/finance';
@@ -135,8 +135,6 @@ export const notificationService = {
    * Trigger instant notification when transaction is saved
    */
   async sendTransactionNotification(tx: Transaction): Promise<void> {
-    if (Platform.OS === 'web') return;
-
     try {
       const settings = await this.getSettings();
       if (!settings.instantNotifEnabled) return;
@@ -149,6 +147,12 @@ export const notificationService = {
       const amountFormatted = (isIncome ? '+' : '-') + ' ' + formatIDR(tx.amount);
       const timeFormatted = tx.time ? ` (${formatTimeID(tx.time)})` : '';
       const body = `${amountFormatted} • ${tx.title} [${tx.categoryName}]${timeFormatted}`;
+
+      if (Platform.OS === 'web') {
+        // Fallback untuk Web/PWA karena Push Notification tidak didukung penuh
+        Alert.alert(title, body);
+        return;
+      }
 
       await Notifications.scheduleNotificationAsync({
         content: {

@@ -466,7 +466,7 @@ export default function DashboardScreen() {
                   </View>
 
                   <View style={styles.txDetails}>
-                    <Text style={styles.txTitle} numberOfLines={1}>
+                    <Text style={styles.txTitle} numberOfLines={1} ellipsizeMode="tail">
                       {tx.title}
                     </Text>
                     <View style={styles.txMetaRow}>
@@ -486,25 +486,44 @@ export default function DashboardScreen() {
                             styles.categoryTagText,
                             { color: tx.categoryColor || Palette.textSecondary },
                           ]}
+                          numberOfLines={1}
                         >
                           {tx.categoryName}
                         </Text>
                       </View>
-                      <Text style={styles.txDateText}>
-                        {formatDateID(tx.date)}
-                        {tx.time ? ` • ${formatTimeID(tx.time, tx.createdAt)}` : ''}
-                      </Text>
+
+                      {tx.walletName ? (
+                        <View style={styles.walletTag}>
+                          <Ionicons name="wallet-outline" size={10} color={Palette.textTertiary} />
+                          <Text style={styles.walletTagText} numberOfLines={1}>
+                            {tx.walletName}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {tx.receiptUri ? (
+                        <View style={styles.receiptTag}>
+                          <Ionicons name="image" size={10} color={Palette.emerald} />
+                        </View>
+                      ) : null}
                     </View>
                   </View>
 
-                  <Text
-                    style={[
-                      styles.txAmount,
-                      isIncome ? styles.txAmountIncome : styles.txAmountExpense,
-                    ]}
-                  >
-                    {isIncome ? '+' : '-'} {formatIDR(tx.amount)}
-                  </Text>
+                  <View style={styles.txAmountContainer}>
+                    <Text
+                      style={[
+                        styles.txAmount,
+                        isIncome ? styles.txAmountIncome : styles.txAmountExpense,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isIncome ? '+' : '-'} {formatIDR(tx.amount)}
+                    </Text>
+                    <Text style={styles.txDateText} numberOfLines={1}>
+                      {formatDateID(tx.date)}
+                      {tx.time ? ` • ${formatTimeID(tx.time, tx.createdAt)}` : ''}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -928,51 +947,91 @@ const styles = StyleSheet.create({
     borderBottomColor: Palette.surfaceElevated,
   },
   txIconContainer: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: Radius.md,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    flexShrink: 0,
   },
   txDetails: {
     flex: 1,
+    minWidth: 0,
     marginRight: 12,
+    justifyContent: 'center',
   },
   txTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: Palette.textPrimary,
-    marginBottom: 3,
+    marginBottom: 4,
   },
   txMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flexWrap: 'wrap',
   },
   categoryTag: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: Radius.xs,
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   categoryTagText: {
     fontSize: 10,
     fontWeight: '600',
   },
-  txDateText: {
-    fontSize: 11,
+  walletTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 3,
+  },
+  walletTagText: {
+    fontSize: 10,
+    fontWeight: '500',
     color: Palette.textTertiary,
+  },
+  receiptTag: {
+    backgroundColor: Palette.emeraldMuted,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  txAmountContainer: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+    maxWidth: '48%',
   },
   txAmount: {
     fontSize: 14,
     fontWeight: '700',
+    textAlign: 'right',
   },
   txAmountIncome: {
     color: Palette.emerald,
   },
   txAmountExpense: {
     color: Palette.rose,
+  },
+  txDateText: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+    marginTop: 3,
+    textAlign: 'right',
   },
   emptyCard: {
     backgroundColor: Palette.surface,
