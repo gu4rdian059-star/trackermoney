@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { processImageToBase64 } from '../utils/imageProcessor';
+import { uploadReceiptImage } from '../services/receiptStorage';
 import {
   Palette,
   Spacing,
@@ -360,6 +361,13 @@ export default function AddTransactionScreen() {
     const finalTime = useRealTime ? getLocalTimeString(nowDate) : customTime;
 
     try {
+      let uploadedReceiptUrl: string | undefined = undefined;
+      if (receiptUri) {
+        setIsProcessingPhoto(true);
+        uploadedReceiptUrl = await uploadReceiptImage(receiptUri);
+        setIsProcessingPhoto(false);
+      }
+
       const savedTx = await financeStorage.addTransaction({
         title: title.trim(),
         amount: numericAmount,
@@ -371,7 +379,7 @@ export default function AddTransactionScreen() {
         walletId: selectedWallet.id,
         walletName: selectedWallet.name,
         walletType: selectedWallet.type,
-        receiptUri: receiptUri || undefined,
+        receiptUri: uploadedReceiptUrl || receiptUri || undefined,
         date: finalDate,
         time: finalTime,
         note: note.trim() || undefined,

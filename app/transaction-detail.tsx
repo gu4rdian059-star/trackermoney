@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { processImageToBase64 } from '../utils/imageProcessor';
+import { uploadReceiptImage } from '../services/receiptStorage';
 import { Palette, Spacing, Radius, formatIDR, formatDateID, formatTimeID } from '../constants/theme';
 import { financeStorage } from '../services/financeStorage';
 import { Transaction } from '../types/finance';
@@ -66,9 +67,9 @@ export default function TransactionDetailScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageToBase64(result.assets[0].uri);
-        await financeStorage.updateReceipt(tx.id, processed);
-        setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
+        const uploadedUrl = await uploadReceiptImage(result.assets[0].uri, tx.id);
+        await financeStorage.updateReceipt(tx.id, uploadedUrl);
+        setTx((prev) => (prev ? { ...prev, receiptUri: uploadedUrl } : prev));
         setReceiptLoadError(false);
         setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
@@ -102,9 +103,9 @@ export default function TransactionDetailScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageToBase64(result.assets[0].uri);
-        await financeStorage.updateReceipt(tx.id, processed);
-        setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
+        const uploadedUrl = await uploadReceiptImage(result.assets[0].uri, tx.id);
+        await financeStorage.updateReceipt(tx.id, uploadedUrl);
+        setTx((prev) => (prev ? { ...prev, receiptUri: uploadedUrl } : prev));
         setReceiptLoadError(false);
         setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
