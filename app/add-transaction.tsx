@@ -11,6 +11,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,6 +56,7 @@ export default function AddTransactionScreen() {
 
   // Receipt / Proof of Transfer Photo State
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [showPhotoOptionsModal, setShowPhotoOptionsModal] = useState(false);
 
   // Real-Time & Date State
@@ -213,6 +215,54 @@ export default function AddTransactionScreen() {
     setCustomTime(`${newH}:${newM}`);
   };
 
+  // Helper to safely process & compress receipt images to Base64 (Universal across Android, iOS & Web)
+  const processImageUri = async (
+    rawUri: string,
+    additionalActions: ImageManipulator.Action[] = []
+  ): Promise<string> => {
+    try {
+      let sourceUri = rawUri;
+      // Handle Web blob URL conversion to data URI if necessary
+      if (Platform.OS === 'web' && rawUri.startsWith('blob:')) {
+        try {
+          const res = await fetch(rawUri);
+          const blob = await res.blob();
+          sourceUri = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // fallback to rawUri
+        }
+      }
+
+      const actions: ImageManipulator.Action[] = [
+        { resize: { width: 1024 } },
+        ...additionalActions,
+      ];
+
+      const manipResult = await ImageManipulator.manipulateAsync(
+        sourceUri,
+        actions,
+        {
+          compress: 0.72,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
+
+      if (manipResult.base64) {
+        return `data:image/jpeg;base64,${manipResult.base64}`;
+      }
+      return manipResult.uri;
+    } catch (e) {
+      console.warn('Image processing fallback:', e);
+      return rawUri;
+    }
+  };
+
   // Image Picker Actions
   const handlePickCamera = async () => {
     setShowPhotoOptionsModal(false);
@@ -229,16 +279,20 @@ export default function AddTransactionScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.85,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setReceiptUri(result.assets[0].uri);
+        setIsProcessingPhoto(true);
+        const processed = await processImageUri(result.assets[0].uri);
+        setReceiptUri(processed);
+        setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       }
     } catch {
+      setIsProcessingPhoto(false);
       Alert.alert('Gagal', 'Terjadi kesalahan saat mengakses kamera.');
     }
   };
@@ -258,16 +312,20 @@ export default function AddTransactionScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.85,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setReceiptUri(result.assets[0].uri);
+        setIsProcessingPhoto(true);
+        const processed = await processImageUri(result.assets[0].uri);
+        setReceiptUri(processed);
+        setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       }
     } catch {
+      setIsProcessingPhoto(false);
       Alert.alert('Gagal', 'Terjadi kesalahan saat membuka galeri foto.');
     }
   };
@@ -278,13 +336,14 @@ export default function AddTransactionScreen() {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      const manipResult = await ImageManipulator.manipulateAsync(
-        receiptUri,
-        [{ flip: ImageManipulator.FlipType.Horizontal }],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      setReceiptUri(manipResult.uri);
+      setIsProcessingPhoto(true);
+      const processed = await processImageUri(receiptUri, [
+        { flip: ImageManipulator.FlipType.Horizontal },
+      ]);
+      setReceiptUri(processed);
+      setIsProcessingPhoto(false);
     } catch {
+      setIsProcessingPhoto(false);
       Alert.alert('Gagal', 'Terjadi kesalahan saat membalik foto.');
     }
   };
@@ -295,13 +354,14 @@ export default function AddTransactionScreen() {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      const manipResult = await ImageManipulator.manipulateAsync(
-        receiptUri,
-        [{ rotate: 90 }],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      setReceiptUri(manipResult.uri);
+      setIsProcessingPhoto(true);
+      const processed = await processImageUri(receiptUri, [
+        { rotate: 90 },
+      ]);
+      setReceiptUri(processed);
+      setIsProcessingPhoto(false);
     } catch {
+      setIsProcessingPhoto(false);
       Alert.alert('Gagal', 'Terjadi kesalahan saat memutar foto.');
     }
   };
@@ -899,7 +959,12 @@ export default function AddTransactionScreen() {
               <Text style={styles.optionalTagText}>Opsional</Text>
             </View>
 
-            {receiptUri ? (
+            {isProcessingPhoto ? (
+              <View style={styles.receiptProcessingCard}>
+                <ActivityIndicator size="small" color={Palette.emerald} />
+                <Text style={styles.receiptProcessingText}>Memproses & mengompres foto struk...</Text>
+              </View>
+            ) : receiptUri ? (
               <View style={styles.receiptPreviewCard}>
                 <Image source={{ uri: receiptUri }} style={styles.receiptThumbnail} />
                 <View style={styles.receiptDetailsWrap}>
@@ -1588,6 +1653,22 @@ const styles = StyleSheet.create({
   optionalTagText: {
     fontSize: 11,
     color: Palette.textTertiary,
+  },
+  receiptProcessingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Palette.emerald,
+    gap: 10,
+  },
+  receiptProcessingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Palette.emerald,
   },
   receiptPreviewCard: {
     flexDirection: 'row',

@@ -25,9 +25,13 @@ export default function TransactionDetailScreen() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showFullscreenPhoto, setShowFullscreenPhoto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptLoadError, setReceiptLoadError] = useState(false);
 
   useEffect(() => {
     if (id) {
+      setReceiptLoadError(false);
+      setReceiptLoading(false);
       financeStorage.getTransactions().then((list) => {
         const found = list.find((item) => item.id === id);
         setTx(found || null);
@@ -228,29 +232,54 @@ export default function TransactionDetailScreen() {
                 <Ionicons name="image" size={16} color={Palette.emerald} />
                 <Text style={styles.receiptSectionTitle}>Foto Struk / Bukti Transfer</Text>
               </View>
-              <Text style={styles.receiptHintText}>Ketuk untuk perbesar</Text>
+              {!receiptLoadError && !(Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
+                <Text style={styles.receiptHintText}>Ketuk untuk perbesar</Text>
+              ) : null}
             </View>
 
-            <TouchableOpacity
-              style={styles.receiptImageWrap}
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.selectionAsync();
-                }
-                setShowFullscreenPhoto(true);
-              }}
-              activeOpacity={0.9}
-            >
-              <Image
-                source={{ uri: tx.receiptUri }}
-                style={styles.receiptImage}
-                resizeMode="cover"
-              />
-              <View style={styles.receiptZoomOverlay}>
-                <Ionicons name="expand-outline" size={15} color="#FFFFFF" />
-                <Text style={styles.receiptZoomText}>Lihat Ukuran Penuh</Text>
+            {receiptLoadError || (Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
+              <View style={styles.receiptErrorCard}>
+                <View style={styles.receiptErrorIconWrap}>
+                  <Ionicons name="alert-circle-outline" size={24} color={Palette.rose} />
+                </View>
+                <Text style={styles.receiptErrorTitle}>Foto Tidak Dapat Dimuat</Text>
+                <Text style={styles.receiptErrorSubtitle}>
+                  Sesi foto lampiran ini telah kedaluwarsa atau tersimpan pada sesi perangkat lain sebelumnya.
+                </Text>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.receiptImageWrap}
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    Haptics.selectionAsync();
+                  }
+                  setShowFullscreenPhoto(true);
+                }}
+                activeOpacity={0.9}
+              >
+                {receiptLoading && (
+                  <View style={styles.receiptImageLoader}>
+                    <ActivityIndicator size="small" color={Palette.emerald} />
+                  </View>
+                )}
+                <Image
+                  source={{ uri: tx.receiptUri }}
+                  style={styles.receiptImage}
+                  resizeMode="cover"
+                  onLoadStart={() => setReceiptLoading(true)}
+                  onLoadEnd={() => setReceiptLoading(false)}
+                  onError={() => {
+                    setReceiptLoading(false);
+                    setReceiptLoadError(true);
+                  }}
+                />
+                <View style={styles.receiptZoomOverlay}>
+                  <Ionicons name="expand-outline" size={15} color="#FFFFFF" />
+                  <Text style={styles.receiptZoomText}>Lihat Ukuran Penuh</Text>
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         ) : null}
 
@@ -335,13 +364,20 @@ export default function TransactionDetailScreen() {
             </View>
 
             <View style={styles.fullscreenImageContainer}>
-              {tx.receiptUri ? (
+              {tx.receiptUri && !receiptLoadError && !(Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
                 <Image
                   source={{ uri: tx.receiptUri }}
                   style={styles.fullscreenImage}
                   resizeMode="contain"
+                  onError={() => setReceiptLoadError(true)}
                 />
-              ) : null}
+              ) : (
+                <View style={styles.fullscreenErrorContainer}>
+                  <Ionicons name="alert-circle-outline" size={48} color="#FFFFFF" />
+                  <Text style={styles.fullscreenErrorText}>Foto tidak dapat ditampilkan</Text>
+                  <Text style={styles.fullscreenErrorSubtext}>Sesi file lampiran telah kedaluwarsa.</Text>
+                </View>
+              )}
             </View>
           </SafeAreaView>
         </View>
@@ -658,9 +694,50 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: Palette.surfaceElevated,
   },
+  receiptImageLoader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
   receiptImage: {
     width: '100%',
     height: '100%',
+  },
+  receiptErrorCard: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: Radius.sm,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptErrorIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFE4E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  receiptErrorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.rose,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  receiptErrorSubtitle: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   receiptZoomOverlay: {
     position: 'absolute',
@@ -673,6 +750,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: Radius.full,
     gap: 4,
+    zIndex: 3,
   },
   receiptZoomText: {
     color: '#FFFFFF',
@@ -720,5 +798,20 @@ const styles = StyleSheet.create({
   fullscreenImage: {
     width: '100%',
     height: '100%',
+  },
+  fullscreenErrorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  fullscreenErrorText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  fullscreenErrorSubtext: {
+    color: '#94A3B8',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
