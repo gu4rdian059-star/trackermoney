@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { processImageToBase64 } from '../utils/imageProcessor';
 import {
   Palette,
   Spacing,
@@ -215,54 +216,6 @@ export default function AddTransactionScreen() {
     setCustomTime(`${newH}:${newM}`);
   };
 
-  // Helper to safely process & compress receipt images to Base64 (Universal across Android, iOS & Web)
-  const processImageUri = async (
-    rawUri: string,
-    additionalActions: ImageManipulator.Action[] = []
-  ): Promise<string> => {
-    try {
-      let sourceUri = rawUri;
-      // Handle Web blob URL conversion to data URI if necessary
-      if (Platform.OS === 'web' && rawUri.startsWith('blob:')) {
-        try {
-          const res = await fetch(rawUri);
-          const blob = await res.blob();
-          sourceUri = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch {
-          // fallback to rawUri
-        }
-      }
-
-      const actions: ImageManipulator.Action[] = [
-        { resize: { width: 1024 } },
-        ...additionalActions,
-      ];
-
-      const manipResult = await ImageManipulator.manipulateAsync(
-        sourceUri,
-        actions,
-        {
-          compress: 0.72,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        }
-      );
-
-      if (manipResult.base64) {
-        return `data:image/jpeg;base64,${manipResult.base64}`;
-      }
-      return manipResult.uri;
-    } catch (e) {
-      console.warn('Image processing fallback:', e);
-      return rawUri;
-    }
-  };
-
   // Image Picker Actions
   const handlePickCamera = async () => {
     setShowPhotoOptionsModal(false);
@@ -284,7 +237,7 @@ export default function AddTransactionScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageUri(result.assets[0].uri);
+        const processed = await processImageToBase64(result.assets[0].uri);
         setReceiptUri(processed);
         setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
@@ -317,7 +270,7 @@ export default function AddTransactionScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageUri(result.assets[0].uri);
+        const processed = await processImageToBase64(result.assets[0].uri);
         setReceiptUri(processed);
         setIsProcessingPhoto(false);
         if (Platform.OS !== 'web') {
@@ -337,9 +290,7 @@ export default function AddTransactionScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
       setIsProcessingPhoto(true);
-      const processed = await processImageUri(receiptUri, [
-        { flip: ImageManipulator.FlipType.Horizontal },
-      ]);
+      const processed = await processImageToBase64(receiptUri, { flipH: true });
       setReceiptUri(processed);
       setIsProcessingPhoto(false);
     } catch {
@@ -355,9 +306,7 @@ export default function AddTransactionScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
       setIsProcessingPhoto(true);
-      const processed = await processImageUri(receiptUri, [
-        { rotate: 90 },
-      ]);
+      const processed = await processImageToBase64(receiptUri, { rotate: 90 });
       setReceiptUri(processed);
       setIsProcessingPhoto(false);
     } catch {

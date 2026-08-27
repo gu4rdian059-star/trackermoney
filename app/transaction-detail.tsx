@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { processImageToBase64 } from '../utils/imageProcessor';
 import { Palette, Spacing, Radius, formatIDR, formatDateID, formatTimeID } from '../constants/theme';
 import { financeStorage } from '../services/financeStorage';
 import { Transaction } from '../types/finance';
@@ -44,52 +45,6 @@ export default function TransactionDetailScreen() {
     }
   }, [id]);
 
-  const processImageUri = async (
-    rawUri: string,
-    additionalActions: ImageManipulator.Action[] = []
-  ): Promise<string> => {
-    try {
-      let sourceUri = rawUri;
-      if (Platform.OS === 'web' && rawUri.startsWith('blob:')) {
-        try {
-          const res = await fetch(rawUri);
-          const blob = await res.blob();
-          sourceUri = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch {
-          // fallback to rawUri
-        }
-      }
-
-      const actions: ImageManipulator.Action[] = [
-        { resize: { width: 1024 } },
-        ...additionalActions,
-      ];
-
-      const manipResult = await ImageManipulator.manipulateAsync(
-        sourceUri,
-        actions,
-        {
-          compress: 0.72,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        }
-      );
-
-      if (manipResult.base64) {
-        return `data:image/jpeg;base64,${manipResult.base64}`;
-      }
-      return manipResult.uri;
-    } catch (e) {
-      console.warn('Image processing fallback:', e);
-      return rawUri;
-    }
-  };
-
   const handlePickCamera = async () => {
     setShowPhotoOptionsModal(false);
     if (!tx) return;
@@ -111,7 +66,7 @@ export default function TransactionDetailScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageUri(result.assets[0].uri);
+        const processed = await processImageToBase64(result.assets[0].uri);
         await financeStorage.updateReceipt(tx.id, processed);
         setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
         setReceiptLoadError(false);
@@ -147,7 +102,7 @@ export default function TransactionDetailScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessingPhoto(true);
-        const processed = await processImageUri(result.assets[0].uri);
+        const processed = await processImageToBase64(result.assets[0].uri);
         await financeStorage.updateReceipt(tx.id, processed);
         setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
         setReceiptLoadError(false);
