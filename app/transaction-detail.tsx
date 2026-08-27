@@ -10,10 +10,13 @@ import {
   Modal,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Palette, Spacing, Radius, formatIDR, formatDateID, formatTimeID } from '../constants/theme';
 import { financeStorage } from '../services/financeStorage';
 import { Transaction } from '../types/finance';
@@ -24,6 +27,8 @@ export default function TransactionDetailScreen() {
   const [tx, setTx] = useState<Transaction | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showFullscreenPhoto, setShowFullscreenPhoto] = useState(false);
+  const [showPhotoOptionsModal, setShowPhotoOptionsModal] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptLoadError, setReceiptLoadError] = useState(false);
@@ -38,6 +43,134 @@ export default function TransactionDetailScreen() {
       });
     }
   }, [id]);
+
+  const processImageUri = async (
+    rawUri: string,
+    additionalActions: ImageManipulator.Action[] = []
+  ): Promise<string> => {
+    try {
+      let sourceUri = rawUri;
+      if (Platform.OS === 'web' && rawUri.startsWith('blob:')) {
+        try {
+          const res = await fetch(rawUri);
+          const blob = await res.blob();
+          sourceUri = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // fallback to rawUri
+        }
+      }
+
+      const actions: ImageManipulator.Action[] = [
+        { resize: { width: 1024 } },
+        ...additionalActions,
+      ];
+
+      const manipResult = await ImageManipulator.manipulateAsync(
+        sourceUri,
+        actions,
+        {
+          compress: 0.72,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
+
+      if (manipResult.base64) {
+        return `data:image/jpeg;base64,${manipResult.base64}`;
+      }
+      return manipResult.uri;
+    } catch (e) {
+      console.warn('Image processing fallback:', e);
+      return rawUri;
+    }
+  };
+
+  const handlePickCamera = async () => {
+    setShowPhotoOptionsModal(false);
+    if (!tx) return;
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Izin Kamera Dibutuhkan',
+          'Harap berikan izin akses kamera pada pengaturan perangkat Anda.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setIsProcessingPhoto(true);
+        const processed = await processImageUri(result.assets[0].uri);
+        await financeStorage.updateReceipt(tx.id, processed);
+        setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
+        setReceiptLoadError(false);
+        setIsProcessingPhoto(false);
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch {
+      setIsProcessingPhoto(false);
+      Alert.alert('Gagal', 'Terjadi kesalahan saat mengakses kamera.');
+    }
+  };
+
+  const handlePickGallery = async () => {
+    setShowPhotoOptionsModal(false);
+    if (!tx) return;
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Izin Galeri Dibutuhkan',
+          'Harap berikan izin akses galeri foto pada pengaturan perangkat Anda.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setIsProcessingPhoto(true);
+        const processed = await processImageUri(result.assets[0].uri);
+        await financeStorage.updateReceipt(tx.id, processed);
+        setTx((prev) => (prev ? { ...prev, receiptUri: processed } : prev));
+        setReceiptLoadError(false);
+        setIsProcessingPhoto(false);
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch {
+      setIsProcessingPhoto(false);
+      Alert.alert('Gagal', 'Terjadi kesalahan saat membuka galeri foto.');
+    }
+  };
+
+  const handleRemoveReceipt = async () => {
+    if (!tx) return;
+    if (Platform.OS !== 'web') {
+      Haptics.selectionAsync();
+    }
+    await financeStorage.updateReceipt(tx.id, null);
+    setTx((prev) => (prev ? { ...prev, receiptUri: undefined } : prev));
+    setReceiptLoadError(false);
+  };
 
   const handleOpenDeleteConfirm = () => {
     if (Platform.OS !== 'web') {
@@ -224,7 +357,7 @@ export default function TransactionDetailScreen() {
           </View>
         </View>
 
-        {/* Kartu Foto Struk / Bukti Transfer Jika Ada */}
+        {/* Kartu Foto Struk / Bukti Transfer */}
         {tx.receiptUri ? (
           <View style={styles.receiptSectionCard}>
             <View style={styles.receiptSectionHeader}>
@@ -232,20 +365,49 @@ export default function TransactionDetailScreen() {
                 <Ionicons name="image" size={16} color={Palette.emerald} />
                 <Text style={styles.receiptSectionTitle}>Foto Struk / Bukti Transfer</Text>
               </View>
-              {!receiptLoadError && !(Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
-                <Text style={styles.receiptHintText}>Ketuk untuk perbesar</Text>
-              ) : null}
+              <View style={styles.receiptHeaderActions}>
+                <TouchableOpacity
+                  style={styles.changeReceiptBtn}
+                  onPress={() => setShowPhotoOptionsModal(true)}
+                  disabled={isProcessingPhoto}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="camera-reverse-outline" size={13} color={Palette.indigo} />
+                  <Text style={styles.changeReceiptBtnText}>Ganti</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.removeReceiptBtn}
+                  onPress={handleRemoveReceipt}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={13} color={Palette.rose} />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {receiptLoadError || (Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
+            {isProcessingPhoto ? (
+              <View style={styles.receiptProcessingCard}>
+                <ActivityIndicator size="small" color={Palette.emerald} />
+                <Text style={styles.receiptProcessingText}>Memproses & menyimpan foto struk...</Text>
+              </View>
+            ) : receiptLoadError || (Platform.OS !== 'web' && tx.receiptUri.startsWith('blob:')) ? (
               <View style={styles.receiptErrorCard}>
                 <View style={styles.receiptErrorIconWrap}>
                   <Ionicons name="alert-circle-outline" size={24} color={Palette.rose} />
                 </View>
-                <Text style={styles.receiptErrorTitle}>Foto Tidak Dapat Dimuat</Text>
+                <Text style={styles.receiptErrorTitle}>Foto Lama Tidak Dapat Dimuat</Text>
                 <Text style={styles.receiptErrorSubtitle}>
-                  Sesi foto lampiran ini telah kedaluwarsa atau tersimpan pada sesi perangkat lain sebelumnya.
+                  Sesi foto lampiran lama ini telah kedaluwarsa. Anda dapat melampirkan foto struk baru sekarang.
                 </Text>
+                <TouchableOpacity
+                  style={styles.reuploadBtn}
+                  onPress={() => setShowPhotoOptionsModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="camera" size={15} color="#FFFFFF" />
+                  <Text style={styles.reuploadBtnText}>Lampirkan Foto Struk Sekarang</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
@@ -281,7 +443,33 @@ export default function TransactionDetailScreen() {
               </TouchableOpacity>
             )}
           </View>
-        ) : null}
+        ) : (
+          <TouchableOpacity
+            style={styles.attachReceiptDashedCard}
+            onPress={() => setShowPhotoOptionsModal(true)}
+            disabled={isProcessingPhoto}
+            activeOpacity={0.75}
+          >
+            {isProcessingPhoto ? (
+              <View style={styles.attachReceiptProcessingRow}>
+                <ActivityIndicator size="small" color={Palette.emerald} />
+                <Text style={styles.receiptProcessingText}>Menyimpan foto struk...</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.attachReceiptIconCircle}>
+                  <Ionicons name="camera-outline" size={20} color={Palette.emerald} />
+                </View>
+                <View style={styles.attachReceiptTextWrap}>
+                  <Text style={styles.attachReceiptTitle}>+ Lampirkan Foto Struk / Bukti</Text>
+                  <Text style={styles.attachReceiptSubtitle}>
+                    Foto langsung atau ambil dari galeri perangkat Anda
+                  </Text>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Tombol Hapus */}
         <TouchableOpacity
@@ -380,6 +568,77 @@ export default function TransactionDetailScreen() {
               )}
             </View>
           </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Modal Pilihan Sumber Foto (Kamera / Galeri) */}
+      <Modal
+        visible={showPhotoOptionsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPhotoOptionsModal(false)}
+      >
+        <View style={styles.photoModalOverlay}>
+          <TouchableOpacity
+            style={styles.photoModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowPhotoOptionsModal(false)}
+          />
+          <View style={styles.photoModalContent}>
+            <View style={styles.photoModalHeader}>
+              <Text style={styles.photoModalTitle}>Pilih Sumber Foto</Text>
+              <TouchableOpacity
+                style={styles.photoModalCloseBtn}
+                onPress={() => setShowPhotoOptionsModal(false)}
+              >
+                <Ionicons name="close" size={18} color={Palette.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.photoModalSubtitle}>
+              Lampirkan foto struk pembayaran atau bukti transfer
+            </Text>
+
+            {/* Opsi Kamera */}
+            <TouchableOpacity
+              style={styles.photoOptionBtn}
+              onPress={handlePickCamera}
+              activeOpacity={0.75}
+            >
+              <View style={styles.photoOptionIconWrapCamera}>
+                <Ionicons name="camera" size={20} color={Palette.emerald} />
+              </View>
+              <View style={styles.photoOptionTextWrap}>
+                <Text style={styles.photoOptionTitle}>Gunakan Kamera</Text>
+                <Text style={styles.photoOptionDesc}>Ambil foto fisik struk secara langsung</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Palette.textTertiary} />
+            </TouchableOpacity>
+
+            {/* Opsi Galeri */}
+            <TouchableOpacity
+              style={styles.photoOptionBtn}
+              onPress={handlePickGallery}
+              activeOpacity={0.75}
+            >
+              <View style={styles.photoOptionIconWrapGallery}>
+                <Ionicons name="images" size={20} color={Palette.cyan} />
+              </View>
+              <View style={styles.photoOptionTextWrap}>
+                <Text style={styles.photoOptionTitle}>Pilih dari Galeri</Text>
+                <Text style={styles.photoOptionDesc}>Unggah tangkapan layar atau foto dari HP</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Palette.textTertiary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.photoModalCancelBtn}
+              onPress={() => setShowPhotoOptionsModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.photoModalCancelText}>Batal</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -738,6 +997,214 @@ const styles = StyleSheet.create({
     color: Palette.textSecondary,
     textAlign: 'center',
     lineHeight: 16,
+    marginBottom: Spacing.md,
+  },
+  reuploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.rose,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    gap: 6,
+    marginTop: 4,
+  },
+  reuploadBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  receiptHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  changeReceiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    gap: 4,
+  },
+  changeReceiptBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.indigo,
+  },
+  removeReceiptBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFF1F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+  },
+  receiptProcessingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Palette.surfaceElevated,
+    borderRadius: Radius.sm,
+    padding: Spacing.lg,
+    gap: 10,
+  },
+  receiptProcessingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Palette.emerald,
+  },
+  attachReceiptDashedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Palette.borderHighlight,
+    borderStyle: 'dashed',
+    gap: 10,
+    marginBottom: Spacing.xl,
+  },
+  attachReceiptProcessingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  attachReceiptIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Palette.emeraldMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachReceiptTextWrap: {
+    flex: 1,
+  },
+  attachReceiptTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 2,
+  },
+  attachReceiptSubtitle: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  // Photo Picker Modal Styles
+  photoModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  photoModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  photoModalContent: {
+    backgroundColor: Palette.surface,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xl,
+    paddingBottom: Platform.OS === 'ios' ? 40 : Spacing.xl,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  photoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  photoModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Palette.textPrimary,
+  },
+  photoModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Palette.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoModalSubtitle: {
+    fontSize: 12,
+    color: Palette.textTertiary,
+    marginBottom: Spacing.lg,
+  },
+  photoOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    marginBottom: Spacing.sm,
+    gap: 12,
+  },
+  photoOptionIconWrapCamera: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.emeraldMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOptionIconWrapGallery: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.cyanMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOptionTextWrap: {
+    flex: 1,
+  },
+  photoOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 2,
+  },
+  photoOptionDesc: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  photoModalCancelBtn: {
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    backgroundColor: Palette.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  photoModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Palette.textSecondary,
   },
   receiptZoomOverlay: {
     position: 'absolute',

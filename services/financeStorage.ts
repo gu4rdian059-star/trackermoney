@@ -180,6 +180,31 @@ export const financeStorage = {
     return true;
   },
 
+  async updateReceipt(id: string, receiptUri: string | null): Promise<boolean> {
+    const list = await this.getTransactions();
+    const updated = list.map((t) => {
+      if (t.id === id) {
+        return { ...t, receiptUri: receiptUri || undefined };
+      }
+      return t;
+    });
+    memoryCache = updated;
+    await safeSetItem(STORAGE_KEY, JSON.stringify(updated));
+    notifyListeners();
+
+    // Update in Supabase Cloud
+    try {
+      await supabase
+        .from('transactions')
+        .update({ receipt_uri: receiptUri || null })
+        .eq('id', id);
+    } catch (e) {
+      // Offline fallback
+    }
+
+    return true;
+  },
+
   async getCashflowSummary(): Promise<CashflowSummary> {
     const list = await this.getTransactions();
     
