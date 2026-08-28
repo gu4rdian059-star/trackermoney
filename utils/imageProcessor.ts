@@ -16,38 +16,31 @@ export async function processImageToBase64(
     flipH?: boolean;
   }
 ): Promise<string> {
+  if (!rawUri) return '';
+
   const maxWidth = options?.maxWidth || 1024;
-  const quality = options?.quality || 0.72;
+  const quality = options?.quality ?? 0.75;
   const rotate = options?.rotate || 0;
   const flipH = options?.flipH || false;
 
-  // 1. WEB & PWA Engine (Pure HTML5 Canvas - Guaranteed Base64 string)
+  // 1. WEB & PWA Engine (Pure HTML5 Canvas + FileReader Fallback)
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    // A. Canvas Conversion (supports resize, rotate, flip, quality compression)
     try {
-      let sourceUrl = rawUri;
-      let blobUrlToRevoke: string | null = null;
-
-      // If needed, fetch into an object URL for clean canvas rendering
-      if (rawUri.startsWith('blob:') || rawUri.startsWith('http')) {
-        try {
-          const response = await fetch(rawUri);
-          const blob = await response.blob();
-          sourceUrl = URL.createObjectURL(blob);
-          blobUrlToRevoke = sourceUrl;
-        } catch {
-          sourceUrl = rawUri;
-        }
-      }
-
       const base64Result = await new Promise<string>((resolve, reject) => {
         const img = new (window as any).Image();
-        img.crossOrigin = 'anonymous';
+
+        // ONLY set crossOrigin on remote http/https URLs.
+        // Setting crossOrigin on blob: or data: breaks image loading in Safari/Chrome!
+        if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
+          img.crossOrigin = 'anonymous';
+        }
 
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            let w = img.naturalWidth || img.width;
-            let h = img.naturalHeight || img.height;
+            let w = img.naturalWidth || img.width || 800;
+            let h = img.naturalHeight || img.height || 600;
 
             // Scale down if larger than maxWidth while keeping aspect ratio
             if (w > maxWidth || h > maxWidth) {
@@ -71,7 +64,7 @@ export async function processImageToBase64(
 
             const ctx = canvas.getContext('2d');
             if (!ctx) {
-              throw new Error('Canvas context not available');
+              throw new Error('Canvas 2D context not available');
             }
 
             ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -91,20 +84,40 @@ export async function processImageToBase64(
         };
 
         img.onerror = (err: any) => reject(err);
-        img.src = sourceUrl;
+        img.src = rawUri;
       });
-
-      if (blobUrlToRevoke) {
-        try {
-          URL.revokeObjectURL(blobUrlToRevoke);
-        } catch {}
-      }
 
       if (base64Result && base64Result.startsWith('data:image/')) {
         return base64Result;
       }
     } catch (webErr) {
-      console.warn('Web canvas image processing failed, trying fallback:', webErr);
+      console.warn('Canvas image conversion failed, attempting FileReader fallback:', webErr);
+    }
+
+    // B. Web FileReader Fallback (Guaranteed to convert blob: to permanent Base64)
+    try {
+      if (rawUri.startsWith('blob:') || rawUri.startsWith('http')) {
+        const response = await fetch(rawUri);
+        const blob = await response.blob();
+        const fallbackBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result);
+            } else {
+              reject(new Error('FileReader result is not a string'));
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        if (fallbackBase64 && fallbackBase64.startsWith('data:image/')) {
+          return fallbackBase64;
+        }
+      }
+    } catch (fallbackErr) {
+      console.warn('FileReader fallback failed:', fallbackErr);
     }
   }
 

@@ -10,9 +10,9 @@ import {
   Platform,
   Alert,
   KeyboardAvoidingView,
-  Image,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -923,7 +923,13 @@ export default function AddTransactionScreen() {
               </View>
             ) : receiptUri ? (
               <View style={styles.receiptPreviewCard}>
-                <Image source={{ uri: receiptUri }} style={styles.receiptThumbnail} />
+                <Image
+                  source={{ uri: receiptUri }}
+                  style={styles.receiptThumbnail}
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                />
                 <View style={styles.receiptDetailsWrap}>
                   <View style={styles.receiptStatusRow}>
                     <Ionicons name="checkmark-circle" size={15} color={Palette.emerald} />

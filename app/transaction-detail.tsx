@@ -9,9 +9,9 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
-  Image,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -384,7 +384,9 @@ export default function TransactionDetailScreen() {
                 <Image
                   source={{ uri: tx.receiptUri }}
                   style={styles.receiptImage}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
                   onLoadStart={() => setReceiptLoading(true)}
                   onLoadEnd={() => setReceiptLoading(false)}
                   onError={() => {
@@ -512,7 +514,9 @@ export default function TransactionDetailScreen() {
                 <Image
                   source={{ uri: tx.receiptUri }}
                   style={styles.fullscreenImage}
-                  resizeMode="contain"
+                  contentFit="contain"
+                  transition={200}
+                  cachePolicy="memory-disk"
                   onError={() => setReceiptLoadError(true)}
                 />
               ) : (
